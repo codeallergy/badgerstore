@@ -79,6 +79,10 @@ func (t *implBadgerStore) Increment(ctx context.Context) *store.IncrementOperati
 	return &store.IncrementOperation{DataStore: t, Context: ctx, Initial: 0, Delta: 1}
 }
 
+func (t *implBadgerStore) Touch(ctx context.Context) *store.TouchOperation {
+	return &store.TouchOperation{DataStore: t, Context: ctx}
+}
+
 func (t *implBadgerStore) Remove(ctx context.Context) *store.RemoveOperation {
 	return &store.RemoveOperation{DataStore: t, Context: ctx}
 }
@@ -199,6 +203,35 @@ func (t *implBadgerStore) CompareAndSetRaw(ctx context.Context, key, value []byt
 
 	return updated, err
 
+}
+
+func (t *implBadgerStore) TouchRaw(ctx context.Context, key []byte, ttlSeconds int) error {
+
+	return t.doInTransaction(ctx, func(txn *badger.Txn) error {
+
+		var value []byte
+
+		item, err := txn.Get(key)
+		if err != nil {
+			if err != badger.ErrKeyNotFound {
+				return err
+			}
+		} else {
+			value, err = item.ValueCopy(nil)
+			if err != nil {
+				return err
+			}
+		}
+
+		entry := &badger.Entry{Key: key, Value: value, UserMeta: byte(0x0)}
+
+		if ttlSeconds > 0 {
+			entry.ExpiresAt = uint64(time.Now().Unix() + int64(ttlSeconds))
+		}
+
+		return txn.SetEntry(entry)
+
+	})
 }
 
 func (t *implBadgerStore) RemoveRaw(ctx context.Context, key []byte) (err error) {
